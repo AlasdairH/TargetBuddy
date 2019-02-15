@@ -29,6 +29,17 @@ def parseCSV(_filename):
     
     return dict_score, dict_scatter
 
+def plotTarget(_axis):
+    # patches
+    _axis.add_patch(mpatches.Circle([0, 0], 0.8, linestyle = "-", fill = False, color = "black", linewidth = 0.5))
+    radius = 6.25
+    for i in range(0, 6):
+        _axis.add_patch(mpatches.Circle([0, 0], radius, linestyle = "-", fill = False, color = "black", linewidth = 0.5))
+        radius = radius + 3.5
+
+    plt.plot([-25, 25], [0, 0], color="black", linestyle = '-', linewidth = 0.5)
+    plt.plot([0, 0], [-25, 25], color="black", linestyle = '-', linewidth = 0.5)
+
 def summary(dict_score, dict_scatter):
 
     scatter_x = []
@@ -38,7 +49,6 @@ def summary(dict_score, dict_scatter):
     plot_avg_perDiagram = []
     # for every list of scores per diagram
     for i in range(1, 11):
-        print("Collecting score summary data from score data for diagram " + str(i))
         int_diagramTotal = 0
         # for every score in the list of the diagram
         int_numScores = 0
@@ -49,7 +59,6 @@ def summary(dict_score, dict_scatter):
         plot_total_perDiagram.append(int_diagramTotal)
         plot_avg_perDiagram.append(int_diagramTotal / int_numScores)
 
-        print("Collecting scatter summary data from diagram " + str(i))
         # for every score in the list of the diagram
         int_numScores = 0
         for scatterPos in dict_scatter[i]:
@@ -102,18 +111,14 @@ def createSpread(scatter_x, scatter_y, _title, _savePath):
     axes.set_xlim([-25, 25])
     axes.set_ylim([-25, 25])
 
-    # patches
-    axes.add_patch(mpatches.Circle([0, 0], 0.8, linestyle = "-", fill = False, color = "black"))
-    radius = 6.25
-    for i in range(0, 6):
-        axes.add_patch(mpatches.Circle([0, 0], radius, linestyle = "-", fill = False, color = "black"))
-        radius = radius + 3.5
+    plotTarget(axes)
 
-    # image
-    #img = imageio.imread("targets/nsra10bull.jpg")
-    #plt.imshow(img, zorder=0, extent=[-25.0, 25.0, -25.0, 25.0])
-    # plot
-    plt.scatter(scatter_x, scatter_y, label = "Scatter", color = [1, 0, 0, 0.25], s = 450)
+    patch_avg = axes.add_patch(mpatches.Circle([xAvg, yAvg], 0.5, linestyle = "-", fill = True, color = "green", linewidth = 0.5, label = "Average"))
+    plot_scatter = plt.scatter(scatter_x, scatter_y, label = "Shot", color = [1, 0, 0, 0.25], s = 450)
+
+    # legend
+    plt.legend(handles=[plot_scatter, patch_avg])
+
     plt.savefig(_savePath)
     plt.close(fig)
 
@@ -135,11 +140,7 @@ def createHeatmap(scatter_x, scatter_y, _res, _title, _savePath):
     axes.set_ylim([-25, 25])
     #axes.grid(linestyle = ":")
 
-    # patches
-    radius = 6.25
-    for i in range(0, 6):
-        axes.add_patch(mpatches.Circle([0, 0], radius, linestyle = "-", fill = False, color = "black"))
-        radius = radius + 3.5
+    plotTarget(axes)
 
     # image
     heatmap, xedges, yedges = np.histogram2d(scatter_x, scatter_y, bins = _res)
@@ -153,7 +154,6 @@ def perDiagram(_diagramDict_score, _diagramDict_scatter):
         scatter_x = []
         scatter_y = []
 
-        print("Collecting scatter summary data from diagram " + str(i))
         # for every score in the list of the diagram
         int_numScores = 0
         for scatterPos in _diagramDict_scatter[i]:
@@ -161,13 +161,32 @@ def perDiagram(_diagramDict_score, _diagramDict_scatter):
             scatter_y.append(scatterPos[1] * -1)
             int_numScores = int_numScores + 1
 
-        createHeatmap(scatter_x, scatter_y, int_numScores / 2, "Diagram " + str(i) + " Heatmap", "save/per_diagram/heatmap/diagram" + str(i) + "_heatmap" + str(i))
-        createSpread(scatter_x, scatter_y, "Diagram " + str(i) + " Spread", "save/per_diagram/spread/diagram" + str(i) + "_spread" + str(i))
+        createHeatmap(scatter_x, scatter_y, int_numScores / 2, "Diagram " + str(i) + " Heatmap", "save/per_diagram/heatmap/diagram" + str(i) + "_heatmap")
+        createSpread(scatter_x, scatter_y, "Diagram " + str(i) + " Spread", "save/per_diagram/spread/diagram" + str(i) + "_spread")
 
+def perCard(_diagramDict_score, _diagramDict_scatter):
+    numCards = len(_diagramDict_scatter[1])
+    print("Parsing " + str(numCards) + " cards")
+    for card in range(0, numCards):
+        scatter_x = []
+        scatter_y = []
+
+        # for every score in the list of the diagram
+        int_numScatters = 0
+        for xy in range(1, 11):
+            scatter_x.append(_diagramDict_scatter[xy][card][0])
+            scatter_y.append(_diagramDict_scatter[xy][card][1] * -1.0)
+
+        createHeatmap(scatter_x, scatter_y, numCards / 2, "Card " + str(card) + " Heatmap", "save/per_card/heatmap/card" + str(card) + "_heatmap")
+        createSpread(scatter_x, scatter_y, "Card " + str(card) + " Spread", "save/per_card/spread/card" + str(card) + "_spread")
 
 # start
 diagramDict_score, diagramDict_scatter = parseCSV("data/scores.csv")
+print("Creating Summary")
 summary(diagramDict_score, diagramDict_scatter)
+print("Collating per card data")
+perCard(diagramDict_score, diagramDict_scatter)
+print("Collating per diagram data")
 perDiagram(diagramDict_score, diagramDict_scatter)
 print("Complete");
 
