@@ -1,3 +1,4 @@
+import multiprocessing
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -6,28 +7,40 @@ import numpy as np
 import imageio
 from collections import defaultdict
 import csv
+import sqlite3
+import tkinter as tk
+import time
 
 diagramID = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
+def insertToDB(_data):
+    db_cursor.executemany("INSERT INTO shots (id, date, card, diagram, score, x, y) VALUES (?,?,?,?,?,?,?)", (_data,))
+
+def getNumberOfCardsInDB():
+    query = db_cursor.execute("SELECT COUNT(id) FROM shots")
+    lastID = int(query.fetchone()[0])
+    return int(lastID / 10)
+
 def parseCSV(_filename):
-    dict_score = defaultdict(list)
-    dict_scatter = defaultdict(list)
-
-    scatter_x = []
-    scatter_y = []
-
-    print("Loading data from file")
+    # diagram, score, x, y
+    print("Loading data from csv")
+    query = db_cursor.execute("SELECT COUNT(id) FROM shots")
+    lastID = int(query.fetchone()[0])
+    numCards = int(lastID / 10)
+    print(str(numCards) + " already in database, starting at " + str(int(numCards) + 1))
+    numCards = numCards + 1
     with open(_filename) as csvfile:
+        cardsRead = 0
         plots = csv.reader(csvfile, delimiter=',')
-        line = 1
         for row in plots:
-            dict_score[int(row[0])].append(int(row[1]))
-            dict_scatter[int(row[0])].append([float(row[2]), float(row[3])])
-            scatter_x.append(float(row[2]))
-            scatter_y.append(float(row[3]) * -1.0)
-            line = line + 1
-    
-    return dict_score, dict_scatter
+            data = (lastID, "TEST_DATE", numCards, int(row[0]), int(row[1]), float(row[2]), (float(row[3]) * -1.0))
+            insertToDB(data)
+            cardsRead += 1
+            lastID += 1
+            if(int(row[0]) == 10):
+                numCards = numCards + 1
+
+    print("Added " + str(int(cardsRead / 10)) + " to database")
 
 def plotTarget(_axis):
     # patches
@@ -82,6 +95,40 @@ def summary(dict_score, dict_scatter):
 
     createHeatmap(scatter_x, scatter_y, 20, "Summary Heatmap", "save/summary/OA_heatmap")
     createSpread(scatter_x, scatter_y, "Summary Spread", "save/summary/OA_spread")
+
+def perDiagram():
+    numCards = getNumberOfCardsInDB()
+    for i in range(1, 11):
+        data_scatter_x = db_cursor.execute("SELECT x FROM shots WHERE diagram = " + str(i)).fetchall()
+        data_scatter_y = db_cursor.execute("SELECT y FROM shots WHERE diagram = " + str(i)).fetchall()
+
+        scatter_x = []
+        scatter_y = []
+
+        for x in data_scatter_x:
+            scatter_x.append(x[0])
+        for y in data_scatter_y:
+            scatter_y.append(y[0])
+
+        createHeatmap(scatter_x, scatter_y, 20, "Diagram " + str(i) + " Heatmap", "save/per_diagram/heatmap/diagram" + str(i) + "_heatmap")
+        createSpread(scatter_x, scatter_y, "Diagram " + str(i) + " Spread", "save/per_diagram/spread/diagram" + str(i) + "_spread")
+
+def perCard():
+    numCards = getNumberOfCardsInDB()
+    for i in range(1, numCards + 1):
+        data_scatter_x = db_cursor.execute("SELECT x FROM shots WHERE card = " + str(i)).fetchall()
+        data_scatter_y = db_cursor.execute("SELECT y FROM shots WHERE card = " + str(i)).fetchall()
+
+        scatter_x = []
+        scatter_y = []
+
+        for x in data_scatter_x:
+            scatter_x.append(x[0])
+        for y in data_scatter_y:
+            scatter_y.append(y[0])
+
+        createHeatmap(scatter_x, scatter_y, 20, "Card " + str(i) + " Heatmap", "save/per_card/heatmap/card" + str(i) + "_heatmap")
+        createSpread(scatter_x, scatter_y, "Card " + str(i) + " Spread", "save/per_card/spread/card" + str(i) + "_spread")
 
 def createSpread(scatter_x, scatter_y, _title, _savePath):
 
@@ -149,44 +196,67 @@ def createHeatmap(scatter_x, scatter_y, _res, _title, _savePath):
     plt.savefig(_savePath)
     plt.close(fig)
 
-def perDiagram(_diagramDict_score, _diagramDict_scatter):
-    for i in range(1, 11):
-        scatter_x = []
-        scatter_y = []
+def cmdImport(_filepath):
+    print("Starting import")
+    parseCSV(_filepath)
+    db.commit()
+    print("Import complete")
 
-        # for every score in the list of the diagram
-        int_numScores = 0
-        for scatterPos in _diagramDict_scatter[i]:
-            scatter_x.append(scatterPos[0])
-            scatter_y.append(scatterPos[1] * -1)
-            int_numScores = int_numScores + 1
+def cmdGenerateAll():
+    query = db_cursor.execute("SELECT COUNT(id) FROM shots")
+    lastID = int(query.fetchone()[0])
+    if(lastID == 0):
+        print("No data to generate from")
+        return
 
-        createHeatmap(scatter_x, scatter_y, int_numScores / 2, "Diagram " + str(i) + " Heatmap", "save/per_diagram/heatmap/diagram" + str(i) + "_heatmap")
-        createSpread(scatter_x, scatter_y, "Diagram " + str(i) + " Spread", "save/per_diagram/spread/diagram" + str(i) + "_spread")
+    start = time.time()
+    #print("Creating Summary")
+    #summary()
+    print("Collating per diagram data")
+    perDiagram()
+    print("Collating per card data")
+    perCard()
+    end = time.time()
+    print("Generation took " + str(end - start) + " seconds")
 
-def perCard(_diagramDict_score, _diagramDict_scatter):
-    numCards = len(_diagramDict_scatter[1])
-    print("Parsing " + str(numCards) + " cards")
-    for card in range(0, numCards):
-        scatter_x = []
-        scatter_y = []
+def cmdClearDB():
+    print("Clearing database")
+    db_cursor.execute("DROP TABLE IF EXISTS shots")
+    db_cursor.execute("CREATE TABLE IF NOT EXISTS shots (id INTEGAR PRIMARY KEY, date TEXT, card INTEGAR, diagram INTEGAR, score INTEGAR, x REAL, y REAL)")
+    db.commit()
 
-        # for every score in the list of the diagram
-        int_numScatters = 0
-        for xy in range(1, 11):
-            scatter_x.append(_diagramDict_scatter[xy][card][0])
-            scatter_y.append(_diagramDict_scatter[xy][card][1] * -1.0)
-
-        createHeatmap(scatter_x, scatter_y, numCards / 2, "Card " + str(card) + " Heatmap", "save/per_card/heatmap/card" + str(card) + "_heatmap")
-        createSpread(scatter_x, scatter_y, "Card " + str(card) + " Spread", "save/per_card/spread/card" + str(card) + "_spread")
+def createUI():
+    root = tk.Tk()
+    root.title("TargetBuddy")
+    w1 = tk.Label(root, text = "File: ")
+    w2 = tk.Entry(root)
+    w3 = tk.Button(root, text = "Import", command = lambda: cmdImport(w2.get()))
+    w4 = tk.Button(root, text = "Generate All", command = cmdGenerateAll)
+    w5 = tk.Button(root, text = "Clear Database", command = cmdClearDB)
+    
+    w1.grid(row = 0, column = 0)
+    w2.grid(row = 0, column = 1)
+    w3.grid(row = 1, column = 0)
+    w4.grid(row = 1, column = 1)
+    w5.grid(row = 2, column = 0)
+    
+    w2.insert(10, "data/scores.csv")
 
 # start
-diagramDict_score, diagramDict_scatter = parseCSV("data/scores.csv")
-print("Creating Summary")
-summary(diagramDict_score, diagramDict_scatter)
-print("Collating per card data")
-perCard(diagramDict_score, diagramDict_scatter)
-print("Collating per diagram data")
-perDiagram(diagramDict_score, diagramDict_scatter)
+db = sqlite3.connect("TargetBuddy.db", check_same_thread = False)
+db_cursor = db.cursor()
+
+db_cursor.execute("CREATE TABLE IF NOT EXISTS shots (id INTEGAR PRIMARY KEY, date TEXT, card INTEGAR, diagram INTEGAR, score INTEGAR, x REAL, y REAL)")
+db.commit()
+
+print("Getting number of cards in DB")
+query = db_cursor.execute("SELECT COUNT(id) FROM shots")
+numCards = query.fetchone()
+print("Found " + str(int(int(numCards[0]) / 10)) + " cards in databse")
+
+createUI()
+tk.mainloop()
+
+db.close()
 print("Complete");
 
