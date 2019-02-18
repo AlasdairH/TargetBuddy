@@ -3,6 +3,9 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.cbook as cbook
+mpl.use("TkAgg")
+from matplotlib.backends.backend_tkagg import FigureCanvasAgg
+
 import numpy as np
 import imageio
 from collections import defaultdict
@@ -12,6 +15,7 @@ import tkinter as tk
 import time
 
 diagramID = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+targetMap = { 1:1, 2:2, 3:3, 4:4, 5:7, 6:12, 7:11, 8:10, 9:9, 10:6 }
 
 def insertToDB(_data):
     db_cursor.executemany("INSERT INTO shots (id, date, card, diagram, score, x, y) VALUES (?,?,?,?,?,?,?)", (_data,))
@@ -43,15 +47,19 @@ def parseCSV(_filename):
     print("Added " + str(int(cardsRead / 10)) + " to database")
 
 def plotTarget(_axis):
+    fig = _axis.get_figure()
     # patches
-    _axis.add_patch(mpatches.Circle([0, 0], 0.8, linestyle = "-", fill = False, color = "black", linewidth = 0.5))
+    #outer
+    _axis.add_patch(mpatches.Circle([0, 0], 23.75, linestyle = "-", fill = True, color = "black", linewidth = 0.5))
+    # bull
+    _axis.add_patch(mpatches.Circle([0, 0], 0.8, linestyle = "-", fill = True, color = "white", linewidth = 0.5))
     radius = 6.25
     for i in range(0, 6):
-        _axis.add_patch(mpatches.Circle([0, 0], radius, linestyle = "-", fill = False, color = "black", linewidth = 0.5))
+        _axis.add_patch(mpatches.Circle([0, 0], radius, linestyle = "-", fill = False, color = "white", linewidth = 0.5))
         radius = radius + 3.5
 
-    plt.plot([-25, 25], [0, 0], color="black", linestyle = '-', linewidth = 0.5)
-    plt.plot([0, 0], [-25, 25], color="black", linestyle = '-', linewidth = 0.5)
+    _axis.plot([-25, 25], [0, 0], color="white", linestyle = '-', linewidth = 0.5)
+    _axis.plot([0, 0], [-25, 25], color="white", linestyle = '-', linewidth = 0.5)
 
 def summary(dict_score, dict_scatter):
 
@@ -98,6 +106,12 @@ def summary(dict_score, dict_scatter):
 
 def perDiagram():
     numCards = getNumberOfCardsInDB()
+
+    figureHeatmap = plt.figure(figsize = (16, 9), dpi = 100)
+    figureSpread = plt.figure(figsize = (16, 9), dpi = 200)
+
+    pos = [3, 4, 1]
+
     for i in range(1, 11):
         data_scatter_x = db_cursor.execute("SELECT x FROM shots WHERE diagram = " + str(i)).fetchall()
         data_scatter_y = db_cursor.execute("SELECT y FROM shots WHERE diagram = " + str(i)).fetchall()
@@ -105,13 +119,25 @@ def perDiagram():
         scatter_x = []
         scatter_y = []
 
+        # reformat data to list
         for x in data_scatter_x:
             scatter_x.append(x[0])
         for y in data_scatter_y:
             scatter_y.append(y[0])
 
-        createHeatmap(scatter_x, scatter_y, 20, "Diagram " + str(i) + " Heatmap", "save/per_diagram/heatmap/diagram" + str(i) + "_heatmap")
-        createSpread(scatter_x, scatter_y, "Diagram " + str(i) + " Spread", "save/per_diagram/spread/diagram" + str(i) + "_spread")
+        pos[2] = targetMap[i]
+        createHeatmap(figureHeatmap, pos, scatter_x, scatter_y, "Diagram " + str(i) + " Heatmap")
+        createSpread(figureSpread, pos, scatter_x, scatter_y, "Diagram " + str(i) + " Spread")
+    
+    figureHeatmap.subplots_adjust(wspace = 0.5, hspace = 0.5)
+    figureSpread.subplots_adjust(wspace = 0.5, hspace = 0.5)
+
+    #figureHeatmap.show()
+    #figureSpread.show()
+    figureHeatmap.savefig("save/per_diagram/diagram_heatmap")
+    figureSpread.savefig("save/per_diagram/diagram_spread")
+    plt.close(figureHeatmap)
+    plt.close(figureSpread)
 
 def perCard():
     numCards = getNumberOfCardsInDB()
@@ -122,15 +148,15 @@ def perCard():
         scatter_x = []
         scatter_y = []
 
+        # reformat data to list
         for x in data_scatter_x:
             scatter_x.append(x[0])
         for y in data_scatter_y:
             scatter_y.append(y[0])
 
-        createHeatmap(scatter_x, scatter_y, 20, "Card " + str(i) + " Heatmap", "save/per_card/heatmap/card" + str(i) + "_heatmap")
-        createSpread(scatter_x, scatter_y, "Card " + str(i) + " Spread", "save/per_card/spread/card" + str(i) + "_spread")
 
-def createSpread(scatter_x, scatter_y, _title, _savePath):
+
+def createSpread(_figure, _pos, scatter_x, scatter_y, _title):
 
     xTotal = 0
     for xVal in scatter_x:
@@ -144,10 +170,10 @@ def createSpread(scatter_x, scatter_y, _title, _savePath):
     yAvg = yTotal / len(scatter_y)
 
     # FIGURE 2 - scatter
-    fig, axes = plt.subplots()
+    axes = _figure.add_subplot(_pos[0], _pos[1], _pos[2])
     axes.set_aspect("equal")
     # title
-    fig.canvas.set_window_title("Shot Scatter");
+    #fig.canvas.set_window_title("Shot Scatter");
     axes.set_title(_title)
     # labels
     axes.format_coord = lambda x, y: ""
@@ -160,21 +186,17 @@ def createSpread(scatter_x, scatter_y, _title, _savePath):
 
     plotTarget(axes)
 
-    patch_avg = axes.add_patch(mpatches.Circle([xAvg, yAvg], 0.5, linestyle = "-", fill = True, color = "green", linewidth = 0.5, label = "Average"))
-    plot_scatter = plt.scatter(scatter_x, scatter_y, label = "Shot", color = [1, 0, 0, 0.25], s = 450)
+    patch_avg = axes.add_patch(mpatches.Circle([xAvg, yAvg], 0.5, linestyle = "-", fill = True, color = "green", linewidth = 0.5, label = "Average", zorder = 20))
+    plot_scatter = plt.scatter(scatter_x, scatter_y, label = "Shot", color = [1, 0, 0, 0.25], s = 200, edgecolors = "none", zorder = 10)
 
     # legend
     plt.legend(handles=[plot_scatter, patch_avg])
 
-    plt.savefig(_savePath)
-    plt.close(fig)
-
-def createHeatmap(scatter_x, scatter_y, _res, _title, _savePath):
+def createHeatmap(_figure, _pos, scatter_x, scatter_y, _title):
     # FIGURE 3 - heatmap
-    fig, axes = plt.subplots()
+    axes = _figure.add_subplot(_pos[0], _pos[1], _pos[2])
     axes.set_aspect("equal")
     # title
-    fig.canvas.set_window_title(_title)
     axes.set_title(_title)
     # labels
     axes.format_coord = lambda x, y: ""
@@ -190,11 +212,9 @@ def createHeatmap(scatter_x, scatter_y, _res, _title, _savePath):
     plotTarget(axes)
 
     # image
-    heatmap, xedges, yedges = np.histogram2d(scatter_x, scatter_y, bins = _res)
+    heatmap, xedges, yedges = np.histogram2d(scatter_x, scatter_y, bins = 20)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-    plt.imshow(heatmap.T, extent = extent, origin = "lower")
-    plt.savefig(_savePath)
-    plt.close(fig)
+    axes.imshow(heatmap.T, extent = extent, origin = "lower")
 
 def cmdImport(_filepath):
     print("Starting import")
@@ -214,8 +234,8 @@ def cmdGenerateAll():
     #summary()
     print("Collating per diagram data")
     perDiagram()
-    print("Collating per card data")
-    perCard()
+    #print("Collating per card data")
+    #perCard()
     end = time.time()
     print("Generation took " + str(end - start) + " seconds")
 
@@ -231,8 +251,8 @@ def createUI():
     w1 = tk.Label(root, text = "File: ")
     w2 = tk.Entry(root)
     w3 = tk.Button(root, text = "Import", command = lambda: cmdImport(w2.get()))
-    w4 = tk.Button(root, text = "Generate All", command = cmdGenerateAll)
-    w5 = tk.Button(root, text = "Clear Database", command = cmdClearDB)
+    w4 = tk.Button(root, text = "Clear Database", command = cmdClearDB)
+    w5 = tk.Button(root, text = "Generate All", command = cmdGenerateAll)
     
     w1.grid(row = 0, column = 0)
     w2.grid(row = 0, column = 1)

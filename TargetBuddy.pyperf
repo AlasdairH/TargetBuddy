@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<ProfilingTarget xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <ProjectTarget>
+    <TargetProject>4ed7b865-453e-48e7-8aa9-55050d46c151</TargetProject>
+    <FriendlyName>TargetBuddy</FriendlyName>
+  </ProjectTarget>
+  <Reports>
+    <Report>
+      <Filename>C:\Users\Ali\AppData\Local\Temp\TargetBuddy_20190217.vsp</Filename>
+    </Report>
+  </Reports>
+</ProfilingTarget>
